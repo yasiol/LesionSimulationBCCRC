@@ -1,6 +1,6 @@
 package TumorModel_4;
 
-//models: normal, hypoxic and necrotic tumor cells
+//models: normal, hypoxic and nercotic tumor cells
 
 import HAL.GridsAndAgents.AgentGrid2D;
 import HAL.GridsAndAgents.AgentSQ2Dunstackable;
@@ -12,9 +12,13 @@ import HAL.Rand;
 import HAL.Util;
 import static HAL.Util.*;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Scanner;
 
 @SuppressWarnings("serial")
@@ -68,7 +72,6 @@ class Cell extends AgentSQ2Dunstackable<Grid> {
         } else {
             return false;
         }
-        //return ( (resVal<= G.DEATH_CONC) && (G.rng.Double()<death_prob) ); 
 
     }
 
@@ -76,8 +79,6 @@ class Cell extends AgentSQ2Dunstackable<Grid> {
         double resVal= G.oxygen.Get(Isq()); //effectively the probability
         double prob= resVal/G.BLOOD_VESSEL_OXYGEN;
         double divide_prob= ProbScale(prob,G.TIMESTEP);
-        // System.out.println("divide_prob");
-        // System.out.println(divide_prob);
         return ( (resVal> G.DEATH_CONC) && (G.rng.Double()< divide_prob) ); 
     }
 
@@ -96,7 +97,7 @@ class Cell extends AgentSQ2Dunstackable<Grid> {
             //multiply current oxygen concentration amount at cell location by the metabolism rate and adds that to the delta field
             //to update the oxygen concentration
         } else if (this.type==G.VESSEL) {
-            G.oxygen.Set(Isq(), G.BLOOD_VESSEL_OXYGEN); //oxygen concentration set to maximum, at 1
+            G.oxygen.Set(Isq(), G.BLOOD_VESSEL_OXYGEN); //oxygen concentration set to maximum
         } else if (this.type==G.HYP) {
             G.oxygen.Add(Isq(), G.HYP_METABOLISM_RATE);
         }
@@ -121,24 +122,13 @@ class Cell extends AgentSQ2Dunstackable<Grid> {
         int currentCellType= this.type;
 
         if ((currentCellType==G.NORMAL) || (currentCellType==G.HYP) ){ //if we have normal/hypoxia tumor cell
-            //System.out.println(G.oxygen.GetMax());
-            //System.out.println(G.oxygen.Get(Isq()));
             if (Death()){ //normal or hypoxic tumor cell becomes nercotic
-                //G.countTumor= G.countTumor-1;
-                // Dispose();
-                // System.out.println("cell died");
-                // Cell toDie= G.GetAgent(Isq());
-                // toDie.type=G.NERCOTIC;
                 this.type=G.NERCOTIC;
-                //System.out.println("nercotic");
                 return;
             }
 
             if (Hypoxia()){ //normal tumor cell becomes hypoxic
                 this.type=G.HYP;
-                //System.out.println("hypoxia");
-                //return;
-
             }
 
             if (Divide()){ //normal or hypoxic tumor cell divides; daughter cell has same type as parent cell
@@ -168,8 +158,6 @@ class Cell extends AgentSQ2Dunstackable<Grid> {
                         }
                         G.NewAgentSQ(locCell).type= currentCellType;
                         G.countTumor= G.countTumor+1;
-                        //toBeReplaced.Dispose();
-                        //G.NewAgentSQ(locCell).type= currentCellType;
                         //System.out.println("vessel replaced by cell");
                     } else if (toBeReplaced==null){ //location is empty; daughter cell created in new location
                         G.NewAgentSQ(locCell).type= currentCellType; //daughter cell has same metabolic rate as parent
@@ -248,6 +236,8 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
     static byte[] state; //for saving model
     static String saveFolder = "/home/ubuntu/LesionSimulations/Saved_Models/";
 
+    double [] oxygenFieldVal;
+
     //tumor cell types
     //Util RGB: constant serving as colors for drawing and labels for different cell types
     public final static int NORMAL= Util.RGB(0,1,0); //tumour cell with normal metabolic rate
@@ -265,7 +255,6 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
     
     //metabolism and cell state constants
     double TUMOR_METABOLISM_RATE = -4.01*Math.pow(10,-15)*(TIMESTEP_DIFFUSION*60.0);  // oxygen consumption rate; units is mol/min/cell; before random value was-0.8
-    //double TUMOR_METABOLISM_RATE2= 300* Math.pow(10,12)* 16 / 1.43 * 0.001*24 *60* TIMESTEP / (SPACE_STEP * SPACE_STEP*SPACE_STEP)* Math.pow(10,12);
     double HYP_METABOLISM_RATE= -2.005*Math.pow(10,-15)*(TIMESTEP_DIFFUSION*60.0); //oxygen consumption rate; units is mol/min/cell
     double BACKGROUND_METABOLISM_RATE= -2.5*Math.pow(10,-18)*(TIMESTEP_DIFFUSION*60.0); //oxygen consumption rate; units is mol/min/cell
     double BLOOD_VESSEL_OXYGEN= 2.81*Math.pow(10,-12)*(TIMESTEP_DIFFUSION*60.0); //amount of oxygen provided to the cells from the blood vessles in mol/min/20 microns segment
@@ -318,19 +307,18 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
             }
 
             //diffusion
-            //oxygen.DiffusionNew(DIFF_RATE); //oxygen diffusion; similar to oxygen.Diffusion(DIFF_RATE) without the 0.25 diffCoef threshold
             oxygen.Diffusion(DIFF_RATE); 
-            // if (oxygen.MaxDelta()>=OXYGEN_DELTA_THRESHOLD) {
-            //     oxygen.Update(); //updates concentration of oxygen after metabolism
-            //     break;
-            // }
             oxygen.Update();
             //oxygen.Diffusion(diffRatesX, diffRatesY);
             //long stopTime = System.nanoTime();
             //long totalTime=   (stopTime - startTime);
             //System.out.println("Time for single step of diffusion and metabolism"+ totalTime);
         }
+
+        
     }
+
+    
 
     public void initializeVesselOxygen() {
 
@@ -339,20 +327,16 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
         }
 
         //diffusion
-        //oxygen.DiffusionNew(DIFF_RATE); //oxygen diffusion; similar to oxygen.Diffusion(DIFF_RATE) without the 0.25 diffCoef threshold
         oxygen.Diffusion(DIFF_RATE); 
         oxygen.Update();
-        //oxygen.Diffusion(diffRatesX, diffRatesY);
     }
 
     public void ModelStep(){ //executed once per time step by each Cell
-        //ShuffleAgents(rng); //shuffles agent list to randomize iterations
         for (Cell cell: this) { //iterate over all cells on the grid
             if (cell.type!= VESSEL) {
                 cell.StepCell();
             }
         }
-
         DiffStep();//cell metabolism and oxygen diffusion
 
     }
@@ -400,7 +384,7 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
 
     public static String newFileName(String path) {
         LocalDateTime myDateObj = LocalDateTime.now();
-        DateTimeFormatter myFormatObj = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+        DateTimeFormatter myFormatObj = DateTimeFormatter.ofPattern("dd-MM-yyyy_HH:mm:ss");
 
         String formattedDate = myDateObj.format(myFormatObj);
         String fileName= path+"/"+formattedDate;
@@ -408,41 +392,139 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
         
     }
 
+    public static BufferedWriter openFile(String FileName) throws IOException {
+        String File = FileName;
+        BufferedWriter outputWriter = null;
+        outputWriter = new BufferedWriter(new FileWriter(File));
+        return outputWriter;
+    }
 
-    public int GenVessels(double vesselSpacingMin,double migProb){
-        //create a Grid to store the locations that are too close for placing another vessel
-        Grid2Ddouble openSpots=new Grid2Ddouble(xDim,yDim); //planar grid; no wraparound
-        //create a neighborhood that defines all indices that are too close
-        int[]vesselSpacingHood=CircleHood(false,vesselSpacingMin); //radius of circular neighborhood is vesselSpacingMin
-        int[]indicesToTry=GenIndicesArray(openSpots.length); //array of indecides
+    public static void closeFile(BufferedWriter writer) throws IOException {
+        BufferedWriter fileWriter = writer;
+        
+        fileWriter.flush();
+        fileWriter.close();
+    }
+
+    public void writeOxygen(BufferedWriter writer) throws IOException {
+        BufferedWriter outputWriterOxygen = writer;
+        double[] oxygenFieldVal = oxygen.GetField();
+
+        for (int i = 0; i < oxygenFieldVal.length; i++) { // saving oxygen concentrations, values are doubles
+            outputWriterOxygen.write(oxygenFieldVal[i] + ","); // seperating concentration values with ,
+
+        }
+
+        outputWriterOxygen.newLine(); // new line for next time step
+        //each time step ends on a "," and new line
+
+    }
+
+    public void writeAgents(BufferedWriter writer) throws IOException {
+        BufferedWriter outputWriterAgents = writer;
+        int agentType;
+        int agentTypeNum=0; //initialized as 0 for empty space
+
+        for (int i = 0; i < length; i++) { // saving agent types
+            Cell currentAgent = GetAgent(i);
+            if (currentAgent!=null) {
+                agentType = currentAgent.type;
+                if (agentType==VESSEL){
+                    agentTypeNum=1;
+                } else if  (agentType==NORMAL){
+                    agentTypeNum=2;
+                } else if (agentType==HYP){
+                    agentTypeNum=3;
+                } else if (agentType==NERCOTIC){
+                    agentTypeNum=4;
+                }
+                outputWriterAgents.write( agentTypeNum + ","); // seperating type with ,
+                // agent types are NORMAL, HYP, NERCOTIC, VESSEL as defined in the Grid class
+                //can also use Integer.toBinaryString(agentTypeNum)
+            } else {
+                outputWriterAgents.write( agentTypeNum + ","); // seperating type with ,
+                //no agent in that grid location
+
+            }
+
+        }
+
+        outputWriterAgents.newLine(); // line seperator
+        //each time step ends on a "," and new line
+
+    }
+
+    public void savingModelArrays(String oxygenFileName, String agentsFileName, List<Cell> All) throws IOException {
+        String oxygenFile = oxygenFileName;
+        String agentFile = agentsFileName;
+
+        int agentType;
+
+        BufferedWriter outputWriterOxygen = null;
+        BufferedWriter outputWriterAgents = null;
+        outputWriterOxygen = new BufferedWriter(new FileWriter(oxygenFile));
+        outputWriterAgents = new BufferedWriter(new FileWriter(agentFile));
+
+        List<Cell> AllAgents = All;
+        double[] oxygenFieldVal = oxygen.GetField();
+
+        for (int i = 0; i <= oxygenFieldVal.length; i++) { // saving oxygen concentrations, values are doubles
+            outputWriterOxygen.write((float) oxygenFieldVal[i] + ","); // seperating concentration values with ,
+
+        }
+        outputWriterOxygen.newLine(); // new line for next time step
+        outputWriterOxygen.flush();
+        outputWriterOxygen.close();
+
+        for (int i = 0; i <= AllAgents.size(); i++) { // saving agent types
+            agentType = AllAgents.get(i).type;
+            outputWriterAgents.write(agentType + ","); // seperating type with ,
+            // agent types are NORMAL, HYP, NERCOTIC, VESSEL as defined in the Grid class
+
+        }
+        outputWriterAgents.newLine(); // new line for next time step
+        outputWriterAgents.flush();
+        outputWriterAgents.close();
+
+    }
+
+    public int GenVessels(double vesselSpacingMin, double migProb) {
+        // create a Grid to store the locations that are too close for placing another
+        // vessel
+        Grid2Ddouble openSpots = new Grid2Ddouble(xDim, yDim); // planar grid; no wraparound
+        // create a neighborhood that defines all indices that are too close
+        int[] vesselSpacingHood = CircleHood(false, vesselSpacingMin); // radius of circular neighborhood is
+                                                                       // vesselSpacingMin
+        int[] indicesToTry = GenIndicesArray(openSpots.length); // array of indecides
         rng.Shuffle(indicesToTry);
-        int vesselCt=0; //number of vessels
+        int vesselCt = 0; // number of vessels
         for (int i : indicesToTry) {
-            if(openSpots.Get(i)==0){
-                int x=openSpots.ItoX(i);
-                int y=openSpots.ItoY(i);
-                GenVessel(x,migProb);
-                //migProb gives the probability that the vessel wont be placed 
-                //directly on top of the previous x, y vessel placement position
+            if (openSpots.Get(i) == 0) {
+                int x = openSpots.ItoX(i);
+                int y = openSpots.ItoY(i);
+                GenVessel(x, migProb);
+                // migProb gives the probability that the vessel wont be placed
+                // directly on top of the previous x, y vessel placement position
                 vesselCt++;
-                int nSpots=openSpots.MapHood(vesselSpacingHood,x,y);
+                int nSpots = openSpots.MapHood(vesselSpacingHood, x, y);
                 for (int j = 0; j < nSpots; j++) {
-                    //mark spot as too close for another vessel
-                    openSpots.Set(vesselSpacingHood[j],-1);
+                    // mark spot as too close for another vessel
+                    openSpots.Set(vesselSpacingHood[j], -1);
                 }
             }
         }
         return vesselCt;
     }
 
-    public void GenVessel(int x,double migProb) {
+    public void GenVessel(int x, double migProb) {
         for (int y = 0; y < yDim; y++) {
-            //clear out any agents that are in the path of the vessel
+            // clear out any agents that are in the path of the vessel
             if (rng.Double() < migProb) {
-                int openCt = MapHood(vnHood, x, y); //number of valid locations in the generated enighborhood
-                //von neuman neighbouhood centered at the current x and y location
-                int i = vnHood[rng.Int(openCt)]; //random index in the generated neighborhood from 0 up to the number of valid locations
-                x=ItoX(i); //x dimension of the square at index i
+                int openCt = MapHood(vnHood, x, y); // number of valid locations in the generated enighborhood
+                // von neuman neighbouhood centered at the current x and y location
+                int i = vnHood[rng.Int(openCt)]; // random index in the generated neighborhood from 0 up to the number
+                                                 // of valid locations
+                x = ItoX(i); // x dimension of the square at index i
             }
             Cell occupant = GetAgent(x, y);
             if (occupant != null) {
@@ -452,40 +534,59 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
         }
     }
 
-    public static void main(String[] args) {
-        System.out.println("Start");
-        long startTime = System.nanoTime(); //setting up to measure time it takes code to run
-        
+    public static void main(String[] args) throws IOException {
 
-        //assuming tumour cell diameter of 20 microns
-        //1 unit size= cell diameter; can set cell diameter to any reasonable value and redo calculations...
-        //as there is one cell per grid location
-        int x=2000, y=2000, msPause=5;
-        double tumorRadCm= 0.05; //use 0.25 to see if model works; radius of tumor in cm: 2 cm is too big: corresponds to 3 million tumor cells
-        //to test saving use radius of 0.10
-        int winScale=1; //used to be 5
-        double convFactor= 500; //1 unit=sqrt(0.0004)=  0.02 mm= 20 micron= 0.002 cm, 1 cm= 500 units
-        //where units is the distance between grid locations
-        //double tumorRad= convFactor*tumorRadScaled; //radius of tumor in terms of unit given;
-        double tumorRad= convFactor*tumorRadCm;
+        System.out.println("Start");
+        long startTime = System.nanoTime(); // setting up to measure time it takes code to run
+
+        // assuming tumour cell diameter of 20 microns
+        // as there is one cell per grid location
+        int x = 2000, y = 2000, msPause = 5;
+        double tumorRadCm = 1.00; 
+        int winScale = 1; // used to be 5
+        double convFactor = 500; // 1 unit=sqrt(0.0004)= 0.02 mm= 20 micron= 0.002 cm, 1 cm= 500 units
+        // where units is the distance between grid locations
+        // double tumorRad= convFactor*tumorRadScaled; //radius of tumor in terms of
+        // unit given;
+        double tumorRad = convFactor * tumorRadCm;
 
         int[] tumorNeighborhood = Util.CircleHood(true, tumorRad);
 
+        GridWindow win = new GridWindow("Tumor Growth Model", x, y, winScale); // each pixel will be viewed on the
+                                                                               // screen as 5*5 square pixels on the
+                                                                               // screen
+        GridWindow winOxygen = new GridWindow("Tumor Growth Model Oxygen Concentration", x, y, winScale); // each pixel
+                                                                                                          // will be
+                                                                                                          // viewed on
+                                                                                                          // the screen
+                                                                                                          // as 5*5
+                                                                                                          // square
+                                                                                                          // pixels on
+                                                                                                          // the screen
+        Grid model = new Grid(x, y, new Rand());
+        // String savedFile=newFileName();
+        // GifMaker saveGif= new GifMaker(savedFile, msPause, false);
 
-        GridWindow win= new GridWindow("Tumor Growth Model",x,y, winScale); //each pixel will be viewed on the screen as 5*5 square pixels on the screen
-        GridWindow winOxygen= new GridWindow("Tumor Growth Model Oxygen Concentration",x,y, winScale); //each pixel will be viewed on the screen as 5*5 square pixels on the screen
-        Grid model= new Grid(x,y, new Rand());
-        //String savedFile=newFileName();
-        //GifMaker saveGif= new GifMaker(savedFile, msPause, false);
+        // saving agents and oxygen field concentration
+        // in each file, each time step is a new row, values are seperated with commas
+        // one file for oxygen concentration, one file for agents
+        // 2000 by 2000 gird: 4 million values on each row (each line)
+        String filePath = newDirectory(); // needed for saving all forms
+        String modelFile = newFileName(filePath); // needed for saving all forms: generates model file name
+        String modelFileOxygen = modelFile + "_Oxygen" + "_RadiusCm_"+ tumorRadCm+ "_SquareGrid_" + x+".txt"; // needed for saving all forms: generates model file name
+        String modelFileAgents = modelFile + "_Agents" + "_RadiusCm_"+ tumorRadCm+"_SquareGrid_" + x+ ".txt"; // needed for saving all forms: generates model file name
+        BufferedWriter oxygenWriter=  openFile(modelFileOxygen);
+        BufferedWriter agentWriter=openFile(modelFileAgents);
 
-        //generating blood vessels
-        model.GenVessels(100,0.8); //minimum vessel spacing (100) , migration probability (0.8)
-        //Diffuse to steady state
+
+        // generating blood vessels
+        model.GenVessels(100, 0.8); // minimum vessel spacing (100) , migration probability (0.8)
+        // Diffuse to steady state
         System.out.println("Initializing Blood Vessels");
-        for (int i = 0; i < 10; i++) { //model.VESSEL_INITIALIZATION_STEPS
-            //model.DiffStep();
+        for (int i = 0; i < 10; i++) { // model.VESSEL_INITIALIZATION_STEPS
+            // model.DiffStep();
             model.initializeVesselOxygen();
-            if (i % 1000==0){
+            if (i % 1000 == 0) {
                 System.out.println(i);
                 model.DrawModel(win);
                 model.DrawOxygen(winOxygen);
@@ -496,36 +597,39 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
         model.DrawModel(win);
         model.DrawOxygen(winOxygen);
 
-
-        //model.InitTumor(tumorRad);
-        int neighbourHoodSize=model.TumorSize(tumorNeighborhood); //returns total number of cells of the given tumour size
-        Cell occupantMid = model.GetAgent(model.xDim/2, model.yDim/2);
+        int neighbourHoodSize = model.TumorSize(tumorNeighborhood); // returns total number of cells of the given tumour
+                                                                    // size
+        Cell occupantMid = model.GetAgent(model.xDim / 2, model.yDim / 2);
         if (occupantMid != null) {
             occupantMid.Dispose();
         }
-        model.NewAgentSQ(model.xDim/2, model.yDim/2).type = NORMAL; //initializing model
-        model.countTumor=1; //from initializing model
+        model.NewAgentSQ(model.xDim / 2, model.yDim / 2).type = NORMAL; // initializing model
+        model.countTumor = 1; // from initializing model
 
-        //main run loop
-        int tick=0;//time that has passed in milliseconds 
-        int previousPop=model.countTumor;
+        model.writeOxygen(oxygenWriter);
+        model.writeAgents(agentWriter);
+
+        // main run loop
+        int tick = 0;// time that has passed in milliseconds
+        int previousPop = model.countTumor;
         int currentPop;
-        int countNoGrow=0;
+        int countNoGrow = 0;
         System.out.println("Cell Initialization Complete");
-        System.out.println("Number of Tumor Cells Needed: "+ neighbourHoodSize);
+        System.out.println("Number of Tumor Cells Needed: " + neighbourHoodSize);
         model.DrawModel(win);
         model.DrawOxygen(winOxygen);
-
-        String filePath= newDirectory();
 
 
         while(true) { 
             //win.TickPause(msPause);
-            //check to see if all cell have died, if yes, we make a new cell
+
+            //SaveState(model, modelFile); //saves model in file as object
+            //saving agents and oxygen field concentration
+            if (tick%100==0){
+                model.writeOxygen(oxygenWriter);
+                model.writeAgents(agentWriter);
+            }
             
-            //for saving model: refer to manual for better understanding of what's happening: ONLY THESE TWO LINES
-            String modelFile= newFileName(filePath);
-            SaveState(model, modelFile); //saves model in file
             
             if (model.countTumor<=0){
                 System.out.println("No Tumor Cell; Model Ended");
@@ -553,6 +657,13 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
                     model.DrawModel(win);
                     model.DrawOxygen(winOxygen);
 
+                    model.writeOxygen(oxygenWriter);
+                    model.writeAgents(agentWriter);
+
+                    closeFile(oxygenWriter);
+                    closeFile(agentWriter);
+                    System.out.println("Files Closed");
+
                     System.out.println("Time for Code to Run in Nanosecond: "+ totalTime); //prints out time it takes code to run in seconds
                     System.out.println("Number of Steps: "+ tick);
                     System.out.println("Done");
@@ -578,10 +689,6 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
 
             //System.out.println(model.countTumor);
 
-
-            // model.CleanAgents();//Equivalent to calling CleanAgents, ShuffleAgents, and IncTick grid functions
-            // model.ShuffleAgents(model.rng);
-
             if (model.countTumor>=neighbourHoodSize){ //if (model.countTumor>=neighbourHoodSize) for stopping based on tumor size or (tick>=numSteps) for stopping based on number of time steps
                 //model.Pop() instead of countTumor if no blood vessels
                 long stopTime = System.nanoTime();
@@ -591,6 +698,14 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
                 //final state
                 model.DrawModel(win);
                 model.DrawOxygen(winOxygen);
+
+                model.writeOxygen(oxygenWriter);
+                model.writeAgents(agentWriter);
+
+
+                closeFile(oxygenWriter);
+                closeFile(agentWriter);
+                System.out.println("Files Closed");
 
                 System.out.println(totalTime); //prints out time it takes code to run in seconds
                 System.out.println(tick);
@@ -608,22 +723,43 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
             }
 
             if (tick % 10==0){
-                System.out.println(model.countTumor);  
+                System.out.println(model.countTumor); 
             }
+
+            
 
             //System.out.println(model.countTumor);
 
             if (win.IsClosed() || winOxygen.IsClosed()) {
+
+                model.writeOxygen(oxygenWriter);
+                model.writeAgents(agentWriter);
+
                 win.Close();
                 winOxygen.Close();
+
+                closeFile(oxygenWriter);
+                closeFile(agentWriter);
+                System.out.println("Files Closed");
                 System.out.println("Windows Closed");
                 break;
             }
         }
 
+        closeFile(oxygenWriter);
+        closeFile(agentWriter);
+        System.out.println("Files Closed");
+
         if (win.IsClosed() || winOxygen.IsClosed()) {
+            model.writeOxygen(oxygenWriter);
+            model.writeAgents(agentWriter);
+
             win.Close();
             winOxygen.Close();
+
+            closeFile(oxygenWriter);
+            closeFile(agentWriter);
+            System.out.println("Files Closed");
             System.out.println("Windows Closed");
         }
 
@@ -633,7 +769,6 @@ public class Grid extends AgentGrid2D<Cell> implements SerializableModel{
 
     @Override
     public void SetupConstructors() {
-        // TODO Auto-generated method stub
         _PassAgentConstructor(Cell.class);
 
     }
